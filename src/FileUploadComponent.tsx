@@ -1,49 +1,61 @@
-import React, { useState } from "react";
-import axios from "axios";
-
-interface PreSignedUrlResponse {
-  url: string;
-}
+import React, { useRef, useState } from "react";
 
 const FileUploadComponent: React.FC = () => {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<FileList | null>(null);
+  const [uploadPercentage, setUploadPercentage] = useState<number>(0);
+  const [timeElapsed, setTimeElapsed] = useState<number>(0);
+  const container = useRef<HTMLDivElement | null>(null);
+  const worker = new Worker(new URL("./worker.ts", import.meta.url), {
+    type: "module",
+  });
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files ? e.target.files[0] : null;
-    setFile(selectedFile);
+  worker.onmessage = (event) => {
+    if (event.data.type === "progress") {
+      setUploadPercentage(event.data.percentage);
+    }
+    if (event.data.type === "complete") {
+      setTimeElapsed(event.data.timeElapsed);
+      alert(
+        `Files uploaded successfully. Time elapsed: ${event.data.timeElapsed} seconds`
+      );
+    }
   };
 
-  const handleUpload = async () => {
-    if (!file) {
-      alert("No file selected.");
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    setFiles(selectedFiles);
+  };
+
+  const handleUpload = () => {
+    if (!files) {
+      alert("No files selected.");
       return;
     }
+    const fileArray = Array.from(files);
+    worker.postMessage({ type: "upload", files: fileArray });
+  };
 
-    try {
-      const { data } = await axios.get<PreSignedUrlResponse>(
-        `http://localhost:3001/get-pre-signed-url?filename=${file.name}`
-      );
-
-      const uploadResult = await axios.put(data.url, file, {
-        headers: {
-          "Content-Type": "application/octet-stream",
-        },
-      });
-
-      if (uploadResult.status === 200) {
-        console.log(uploadResult.config.url)
-        // alert("File uploaded successfully.");
-      }
-    } catch (error) {
-      console.error("Error uploading file: ", error);
-      alert("File upload failed.");
+  const changeBackground = () => {
+    if (container.current) {
+      container.current.style.backgroundColor = `#f3${Math.floor(
+        Math.random() * 21
+      )}`;
     }
   };
 
   return (
-    <div>
-      <input type="file" onChange={handleFileChange} />
+    <div ref={container}>
+      <input
+        type="file"
+        onChange={handleFileChange}
+        {...({ webkitdirectory: "true", directory: "true" } as any)}
+      />
       <button onClick={handleUpload}>Upload</button>
+      <div>
+        <progress value={uploadPercentage} max="100" />
+      </div>
+      <div>Time Elapsed: {timeElapsed} seconds</div>
+      <button onClick={changeBackground}>Change Background</button>
     </div>
   );
 };
